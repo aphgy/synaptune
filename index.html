@@ -264,6 +264,8 @@ for(const n of nodes){
   const t1=el("text",{x:0,y:ty,"text-anchor":"middle"}); t1.textContent=n.name;
   const t2=el("text",{class:"hrs",x:0,y:ty+12,"text-anchor":"middle"}); t2.textContent=n.h+"h";
   gg.appendChild(t1); gg.appendChild(t2);
+  gg.addEventListener("pointerenter",()=>{ hoverId=n.id; kick(); });          // ホバーで斥力ON→周囲を押しのける
+  gg.addEventListener("pointerleave",()=>{ if(hoverId===n.id){ hoverId=null; kick(); } }); // 離すと張力で戻る
   svg.appendChild(gg);
   n.gEl=gg;
 }
@@ -289,8 +291,9 @@ function layout(){
    各ノードは定位置へのバネ(復元力)と、線=エッジのバネ(張力)で繋がれ、設計配置がその静止(釣り合い)状態。
    読み込み時はそこへオフセットをかけた状態から解放し、わずかにオーバーシュートして自然に落ち着く。
    減衰はやや弱め(軽い不足減衰)で、1回だけ穏やかに行き過ぎてから収束する — 段階的な不自然さがない単一の緩和。 */
-const kHome=0.020, kEdge=0.006, damping=0.83;
-let raf=0, still=0;
+const kHome=0.013, kEdge=0.005, damping=0.86;
+const kHover=4200, hoverCap=1.1;                          // ホバー中のノードから周囲を押しのける斥力
+let raf=0, still=0, hoverId=null;
 function step(){
   for(const n of nodes){ n.ax=(n.hx-n.sx)*kHome; n.ay=(n.hy-n.sy)*kHome; }
   for(const e of edgeObjs){                              // エッジ張力: 設計時の長さを自然長とするバネ
@@ -298,6 +301,15 @@ function step(){
     let dx=b.sx-a.sx, dy=b.sy-a.sy, d=Math.hypot(dx,dy)||0.01;
     const f=(d-e.rest)*kEdge, ux=dx/d, uy=dy/d;
     a.ax+=ux*f; a.ay+=uy*f; b.ax-=ux*f; b.ay-=uy*f;
+  }
+  if(hoverId){                                            // ホバーしたノードの斥力を強める(周囲を押しのける)
+    const h=N[hoverId];
+    for(const n of nodes){
+      if(n===h) continue;
+      let dx=n.sx-h.sx, dy=n.sy-h.sy, d2=dx*dx+dy*dy||0.01, d=Math.sqrt(d2);
+      const f=Math.min(kHover/d2,hoverCap), ux=dx/d, uy=dy/d;
+      n.ax+=ux*f; n.ay+=uy*f;
+    }
   }
   let maxv=0;
   for(const n of nodes){
@@ -307,15 +319,16 @@ function step(){
   }
   layout();
   if(maxv>0.05){ still=0; raf=requestAnimationFrame(step); }        // まだ動いている
+  else if(hoverId){ raf=0; }                                        // ホバー中は押しのけた状態で保持(スナップしない)
   else if(++still<10){ raf=requestAnimationFrame(step); }           // 静止確認
-  else { for(const n of nodes){ n.sx=n.hx; n.sy=n.hy; } layout(); } // 設計座標へ最終確定(既にほぼ一致)
+  else { raf=0; for(const n of nodes){ n.sx=n.hx; n.sy=n.hy; } layout(); } // 設計座標へ最終確定
 }
+function kick(){ if(!raf){ still=0; raf=requestAnimationFrame(step); } }   // 停止中なら再始動
 layout();
-const startSim=()=>{ if(!raf) raf=requestAnimationFrame(step); };
 if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches){
   for(const n of nodes){ n.sx=n.hx; n.sy=n.hy; } layout();   // 動きを抑える設定なら即静止
 }else{
-  startSim();
+  kick();
 }
 
 const zoom=document.getElementById("zoom");
