@@ -287,14 +287,21 @@ function layout(){
 
 /* force simulation: 斥力(全ノード間の反発) + 線の引力(バネ) + 定位置への復元。
    反発と引力は energy とともに減衰し、最後は復元力だけが残るので必ずスタティックな配置に収束する。 */
-const kHome=0.006, kRep=3200, kEdge=0.010, damping=0.95;
-let energy=1, raf=0;
+/* 高摩擦(オーバーダンプ)なので振動せず、なめらかにゆっくり定位置へ収束する。
+   斥力・引力は「ゆるやかに立ち上げてから減衰」する包絡線で効かせ、初期の急なキックを防ぐ。 */
+const kHome=0.012, kRep=2200, kEdge=0.008, damping=0.80;
+let frame=0, raf=0;
 function step(){
-  for(const n of nodes){ n.ax=(n.hx-n.sx)*kHome; n.ay=(n.hy-n.sy)*kHome; }
+  frame++;
+  const ramp=Math.min(frame/40,1);                       // 全ての力を約0.7秒かけて立ち上げ(初期の急な動きを防ぐ)
+  const decay=frame<70?1:Math.pow(0.99,frame-70);        // 斥力・引力はその後ゆっくり減衰
+  const energy=ramp*decay;
+  const home=kHome*ramp;                                 // 復元力も0から立ち上げ、静かに動き出す
+  for(const n of nodes){ n.ax=(n.hx-n.sx)*home; n.ay=(n.hy-n.sy)*home; }
   for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
     const a=nodes[i],b=nodes[j];
     let dx=a.sx-b.sx, dy=a.sy-b.sy, d2=dx*dx+dy*dy||0.01, d=Math.sqrt(d2);
-    const f=Math.min(kRep*energy/d2,4), fx=dx/d*f, fy=dy/d*f;
+    const f=Math.min(kRep*energy/d2,2), fx=dx/d*f, fy=dy/d*f;
     a.ax+=fx; a.ay+=fy; b.ax-=fx; b.ay-=fy;
   }
   for(const e of edgeObjs){
@@ -310,7 +317,6 @@ function step(){
     if(Math.abs(n.vx)>maxv)maxv=Math.abs(n.vx);
     if(Math.abs(n.vy)>maxv)maxv=Math.abs(n.vy);
   }
-  energy*=0.993;
   layout();
   if(energy>0.015||maxv>0.02){ raf=requestAnimationFrame(step); }
   else { for(const n of nodes){ n.sx=n.hx; n.sy=n.hy; } layout(); }   // 最終的に設計座標へスナップ
