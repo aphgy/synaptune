@@ -95,7 +95,9 @@
     font-size:10px;fill:#48545F;letter-spacing:.04em;font-weight:700;
     paint-order:stroke;stroke:#F5F7F9;stroke-width:4px;
   }
-  .node circle{cursor:pointer;transition:opacity .15s;stroke:#fff;stroke-width:1.5px;}
+  .node circle{cursor:pointer;transition:opacity .18s;stroke:#fff;stroke-width:1.5px;}
+  .node-scale{transform-box:fill-box;transform-origin:center;transition:transform .22s cubic-bezier(.34,1.56,.44,1);}
+  .node:hover .node-scale,.node.active .node-scale{transform:scale(1.1);}
   .node:hover circle,.node.active circle{opacity:1;}
   .node text{
     font-size:13px;font-weight:800;fill:var(--ink);
@@ -198,11 +200,12 @@ const edges=[
 ];
 
 const svg=document.getElementById("map");
+const SVGNS="http://www.w3.org/2000/svg";
 const N=Object.fromEntries(nodes.map(n=>[n.id,n]));
 const r=h=>8+Math.sqrt(h)*4.6;
-let g="";
+const el=(tag,attrs)=>{const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;};
 
-/* axes — background chips behind labels for contrast, placed outside the plotted area */
+/* axes — background chips behind labels for contrast, placed outside the plotted area (static) */
 function axisLabel(x,y,txt,anchor,rot){
   const w=txt.length*17.5+20;
   const rotAttr=rot?`transform="rotate(${rot} ${x} ${y})"`:'';
@@ -213,38 +216,111 @@ function axisLabel(x,y,txt,anchor,rot){
     <text class="axis" x="${x}" y="${y}" text-anchor="${anchor}">${txt}</text>
   </g>`;
 }
-g+=axisLabel(PAD+4,30,"クラブ・電子","start",0);
-g+=axisLabel(PAD+4,H-14,"歌もの・生音","start",0);
-g+=axisLabel(26,H/2,"日本","middle",-90);
-g+=axisLabel(W-26,H/2,"海外","middle",90);
+let axesSVG="";
+axesSVG+=axisLabel(PAD+4,30,"クラブ・電子","start",0);
+axesSVG+=axisLabel(PAD+4,H-14,"歌もの・生音","start",0);
+axesSVG+=axisLabel(26,H/2,"日本","middle",-90);
+axesSVG+=axisLabel(W-26,H/2,"海外","middle",90);
+svg.innerHTML=axesSVG;
 
-/* edges */
+/* simulation state — n.x / n.y stay the design %s (used by zoom); sim runs in px on n.sx / n.sy */
+for(const n of nodes){
+  n.hx=px(n.x); n.hy=py(n.y); n.rr=r(n.h);
+  const ang=Math.random()*Math.PI*2, rad=30+Math.random()*52;   // 少し乱雑な初期配置
+  n.sx=n.hx+Math.cos(ang)*rad; n.sy=n.hy+Math.sin(ang)*rad;
+  n.vx=(Math.random()-0.5)*2; n.vy=(Math.random()-0.5)*2;
+}
+
+/* edges (live elements, repositioned every frame) */
+const edgeObjs=[];
 for(const edge of edges){
   const[a,b,l,t=0.5,dyOverride]=edge;
   const A=N[a],B=N[b];
-  const x1=px(A.x),y1=py(A.y),x2=px(B.x),y2=py(B.y);
-  const lx=x1+(x2-x1)*t, ly=y1+(y2-y1)*t;
   const dy=dyOverride!==undefined?dyOverride:-6;
-  g+=`<line class="edge" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+  const line=el("line",{class:"edge"});
+  svg.appendChild(line);
+  let rect=null,text=null,w=0;
   if(l){
-    const w=l.length*10+10;
-    g+=`<rect x="${lx-w/2}" y="${ly+dy-11}" width="${w}" height="16" rx="4" fill="#F5F7F9" opacity=".9"/>`;
-    g+=`<text class="edgelabel" x="${lx}" y="${ly+dy}" text-anchor="middle">${l}</text>`;
+    w=l.length*10+10;
+    rect=el("rect",{width:w,height:16,rx:4,fill:"#F5F7F9",opacity:".9"});
+    text=el("text",{class:"edgelabel","text-anchor":"middle"});
+    text.textContent=l;
+    svg.appendChild(rect); svg.appendChild(text);
+  }
+  edgeObjs.push({a,b,t,dy,line,rect,text,w,rest:Math.hypot(B.hx-A.hx,B.hy-A.hy)});
+}
+
+/* nodes (live elements) */
+for(const n of nodes){
+  const gg=el("g",{class:"node","data-id":n.id});
+  const scale=el("g",{class:"node-scale"});
+  const cAttrs=n.fam==="other"
+    ?{cx:0,cy:0,r:n.rr,"stroke-dasharray":"4 3",fill:"none",stroke:FAM.other,"stroke-width":2,opacity:".9"}
+    :{cx:0,cy:0,r:n.rr,fill:FAM[n.fam],opacity:".82"};
+  scale.appendChild(el("circle",cAttrs));
+  gg.appendChild(scale);
+  const ty=n.rr+13;
+  const t1=el("text",{x:0,y:ty,"text-anchor":"middle"}); t1.textContent=n.name;
+  const t2=el("text",{class:"hrs",x:0,y:ty+12,"text-anchor":"middle"}); t2.textContent=n.h+"h";
+  gg.appendChild(t1); gg.appendChild(t2);
+  svg.appendChild(gg);
+  n.gEl=gg;
+}
+
+/* place every element from the current simulation state */
+function layout(){
+  for(const e of edgeObjs){
+    const A=N[e.a],B=N[e.b];
+    e.line.setAttribute("x1",A.sx.toFixed(2)); e.line.setAttribute("y1",A.sy.toFixed(2));
+    e.line.setAttribute("x2",B.sx.toFixed(2)); e.line.setAttribute("y2",B.sy.toFixed(2));
+    if(e.text){
+      const lx=A.sx+(B.sx-A.sx)*e.t, ly=A.sy+(B.sy-A.sy)*e.t;
+      e.rect.setAttribute("x",(lx-e.w/2).toFixed(2)); e.rect.setAttribute("y",(ly+e.dy-11).toFixed(2));
+      e.text.setAttribute("x",lx.toFixed(2)); e.text.setAttribute("y",(ly+e.dy).toFixed(2));
+    }
+  }
+  for(const n of nodes){
+    n.gEl.setAttribute("transform",`translate(${n.sx.toFixed(2)} ${n.sy.toFixed(2)})`);
   }
 }
 
-/* nodes */
-for(const n of nodes){
-  const cx=px(n.x),cy=py(n.y),rr=r(n.h);
-  const dash=n.fam==="other"?`stroke-dasharray="4 3" fill="none" stroke="${FAM.other}" stroke-width="2" opacity=".9"`:`fill="${FAM[n.fam]}" opacity=".82"`;
-  const ty=cy+rr+13;
-  g+=`<g class="node" data-id="${n.id}">
-    <circle cx="${cx}" cy="${cy}" r="${rr}" ${dash}/>
-    <text x="${cx}" y="${ty}" text-anchor="middle">${n.name}</text>
-    <text class="hrs" x="${cx}" y="${ty+12}" text-anchor="middle">${n.h}h</text>
-  </g>`;
+/* force simulation: 斥力(全ノード間の反発) + 線の引力(バネ) + 定位置への復元。
+   反発と引力は energy とともに減衰し、最後は復元力だけが残るので必ずスタティックな配置に収束する。 */
+const kHome=0.019, kRep=4600, kEdge=0.02, damping=0.9;
+let energy=1, raf=0;
+function step(){
+  for(const n of nodes){ n.ax=(n.hx-n.sx)*kHome; n.ay=(n.hy-n.sy)*kHome; }
+  for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
+    const a=nodes[i],b=nodes[j];
+    let dx=a.sx-b.sx, dy=a.sy-b.sy, d2=dx*dx+dy*dy||0.01, d=Math.sqrt(d2);
+    const f=Math.min(kRep*energy/d2,4), fx=dx/d*f, fy=dy/d*f;
+    a.ax+=fx; a.ay+=fy; b.ax-=fx; b.ay-=fy;
+  }
+  for(const e of edgeObjs){
+    const a=N[e.a],b=N[e.b];
+    let dx=b.sx-a.sx, dy=b.sy-a.sy, d=Math.hypot(dx,dy)||0.01;
+    const f=(d-e.rest)*kEdge*energy, fx=dx/d*f, fy=dy/d*f;
+    a.ax+=fx; a.ay+=fy; b.ax-=fx; b.ay-=fy;
+  }
+  let maxv=0;
+  for(const n of nodes){
+    n.vx=(n.vx+n.ax)*damping; n.vy=(n.vy+n.ay)*damping;
+    n.sx+=n.vx; n.sy+=n.vy;
+    if(Math.abs(n.vx)>maxv)maxv=Math.abs(n.vx);
+    if(Math.abs(n.vy)>maxv)maxv=Math.abs(n.vy);
+  }
+  energy*=0.985;
+  layout();
+  if(energy>0.02||maxv>0.06){ raf=requestAnimationFrame(step); }
+  else { for(const n of nodes){ n.sx=n.hx; n.sy=n.hy; } layout(); }   // 最終的に設計座標へスナップ
 }
-svg.innerHTML=g;
+layout();
+const startSim=()=>{ if(!raf) raf=requestAnimationFrame(step); };
+if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches){
+  for(const n of nodes){ n.sx=n.hx; n.sy=n.hy; } layout();   // 動きを抑える設定なら即静止
+}else{
+  startSim();
+}
 
 const zoom=document.getElementById("zoom");
 const zGenre=zoom.querySelector(".z-genre"),zFam=zoom.querySelector(".z-fam"),
