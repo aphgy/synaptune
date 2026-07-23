@@ -285,41 +285,30 @@ function layout(){
   }
 }
 
-/* force simulation: 斥力(全ノード間の反発) + 線の引力(バネ) + 定位置への復元。
-   反発と引力は energy とともに減衰し、最後は復元力だけが残るので必ずスタティックな配置に収束する。 */
-/* 高摩擦(オーバーダンプ)なので振動せず、なめらかにゆっくり定位置へ収束する。
-   斥力・引力は「ゆるやかに立ち上げてから減衰」する包絡線で効かせ、初期の急なキックを防ぐ。 */
-const kHome=0.012, kRep=2200, kEdge=0.008, damping=0.80;
-let frame=0, raf=0;
+/* 張力のあるバネ網の緩和運動:
+   各ノードは定位置へのバネ(復元力)と、線=エッジのバネ(張力)で繋がれ、設計配置がその静止(釣り合い)状態。
+   読み込み時はそこへオフセットをかけた状態から解放し、わずかにオーバーシュートして自然に落ち着く。
+   減衰はやや弱め(軽い不足減衰)で、1回だけ穏やかに行き過ぎてから収束する — 段階的な不自然さがない単一の緩和。 */
+const kHome=0.020, kEdge=0.006, damping=0.83;
+let raf=0, still=0;
 function step(){
-  frame++;
-  const ramp=Math.min(frame/40,1);                       // 全ての力を約0.7秒かけて立ち上げ(初期の急な動きを防ぐ)
-  const decay=frame<70?1:Math.pow(0.99,frame-70);        // 斥力・引力はその後ゆっくり減衰
-  const energy=ramp*decay;
-  const home=kHome*ramp;                                 // 復元力も0から立ち上げ、静かに動き出す
-  for(const n of nodes){ n.ax=(n.hx-n.sx)*home; n.ay=(n.hy-n.sy)*home; }
-  for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
-    const a=nodes[i],b=nodes[j];
-    let dx=a.sx-b.sx, dy=a.sy-b.sy, d2=dx*dx+dy*dy||0.01, d=Math.sqrt(d2);
-    const f=Math.min(kRep*energy/d2,2), fx=dx/d*f, fy=dy/d*f;
-    a.ax+=fx; a.ay+=fy; b.ax-=fx; b.ay-=fy;
-  }
-  for(const e of edgeObjs){
+  for(const n of nodes){ n.ax=(n.hx-n.sx)*kHome; n.ay=(n.hy-n.sy)*kHome; }
+  for(const e of edgeObjs){                              // エッジ張力: 設計時の長さを自然長とするバネ
     const a=N[e.a],b=N[e.b];
     let dx=b.sx-a.sx, dy=b.sy-a.sy, d=Math.hypot(dx,dy)||0.01;
-    const f=(d-e.rest)*kEdge*energy, fx=dx/d*f, fy=dy/d*f;
-    a.ax+=fx; a.ay+=fy; b.ax-=fx; b.ay-=fy;
+    const f=(d-e.rest)*kEdge, ux=dx/d, uy=dy/d;
+    a.ax+=ux*f; a.ay+=uy*f; b.ax-=ux*f; b.ay-=uy*f;
   }
   let maxv=0;
   for(const n of nodes){
     n.vx=(n.vx+n.ax)*damping; n.vy=(n.vy+n.ay)*damping;
     n.sx+=n.vx; n.sy+=n.vy;
-    if(Math.abs(n.vx)>maxv)maxv=Math.abs(n.vx);
-    if(Math.abs(n.vy)>maxv)maxv=Math.abs(n.vy);
+    const s=Math.abs(n.vx)+Math.abs(n.vy); if(s>maxv)maxv=s;
   }
   layout();
-  if(energy>0.015||maxv>0.02){ raf=requestAnimationFrame(step); }
-  else { for(const n of nodes){ n.sx=n.hx; n.sy=n.hy; } layout(); }   // 最終的に設計座標へスナップ
+  if(maxv>0.05){ still=0; raf=requestAnimationFrame(step); }        // まだ動いている
+  else if(++still<10){ raf=requestAnimationFrame(step); }           // 静止確認
+  else { for(const n of nodes){ n.sx=n.hx; n.sy=n.hy; } layout(); } // 設計座標へ最終確定(既にほぼ一致)
 }
 layout();
 const startSim=()=>{ if(!raf) raf=requestAnimationFrame(step); };
