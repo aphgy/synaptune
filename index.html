@@ -224,11 +224,14 @@ axesSVG+=axisLabel(W-26,H/2,"海外","middle",90);
 svg.innerHTML=axesSVG;
 
 /* simulation state — n.x / n.y stay the design %s (used by zoom); sim runs in px on n.sx / n.sy */
-const CX=W/2, CY=H/2, OFFSET=58;   // 初期の変位オフセット量(中心から外向き)
+const CX=W/2, CY=H/2, MAXOFF=62, POW=1.9;   // 中心からの距離のべき乗に比例した変位オフセット
+for(const n of nodes){ n.hx=px(n.x); n.hy=py(n.y); n.rr=r(n.h); }
+let dMax=0;
+for(const n of nodes){ const d=Math.hypot(n.hx-CX,n.hy-CY); if(d>dMax)dMax=d; }
 for(const n of nodes){
-  n.hx=px(n.x); n.hy=py(n.y); n.rr=r(n.h);
   let dx=n.hx-CX, dy=n.hy-CY, d=Math.hypot(dx,dy)||1;   // 中心から各ノードへ向かう方向
-  n.sx=n.hx+dx/d*OFFSET; n.sy=n.hy+dy/d*OFFSET;         // その方向へ一定量ずらした変位オフセットから開始
+  const mag=MAXOFF*Math.pow(d/dMax,POW);                // べき乗なので中心付近はほぼ不動、外側ほど大きく広がる
+  n.sx=n.hx+dx/d*mag; n.sy=n.hy+dy/d*mag;               // 中心を軸に広げた状態から解放する
   n.vx=0; n.vy=0;
 }
 
