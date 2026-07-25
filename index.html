@@ -104,6 +104,12 @@
     pointer-events:none;paint-order:stroke;stroke:#F5F7F9;stroke-width:4px;
   }
   .node .hrs{font-size:10.5px;font-weight:700;fill:#3D4A56;stroke-width:3.5px;font-variant-numeric:tabular-nums;letter-spacing:.02em;}
+  .viewctl{display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap;margin-top:12px;
+    font-size:12px;color:var(--sub);font-weight:700;}
+  .viewctl input[type=range]{flex:1;min-width:150px;accent-color:var(--club);cursor:ew-resize;height:4px;}
+  .vc-label{letter-spacing:.12em;color:var(--ink);}
+  .vc-hint{font-size:11px;font-weight:600;letter-spacing:.02em;opacity:.9;}
+  .mapbox{touch-action:pan-y;}
   footer{margin-top:14px;font-size:11.5px;color:#5B6B7A;line-height:1.8;letter-spacing:.015em;}
 </style>
 </head>
@@ -124,6 +130,9 @@
       <span class="key-item"><b style="background:var(--roots)"></b>ルーツ・レトロ</span>
       <span class="key-item"><b style="background:var(--chara)"></b>キャラクター文化</span>
       <span class="key-item"><b style="background:none;border:1.5px dashed var(--sub);"></b>音楽以外</span>
+    </div>
+    <div class="key-row">
+      <span class="key-item"><svg width="52" height="26" viewBox="0 0 52 26"><circle cx="14" cy="13" r="6" fill="#8B99A6" opacity=".5"/><circle cx="38" cy="13" r="9" fill="#8B99A6"/></svg>奥行き = 年代(奥=源流 → 手前=現行)</span>
     </div>
   </div>
 
@@ -149,6 +158,12 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="viewctl">
+    <span class="vc-label">時間軸</span>
+    <input id="yaw" type="range" min="-66" max="66" value="0" step="1" aria-label="時間軸の視点を回す">
+    <span class="vc-hint">奥 = 源流(古い) → 手前 = 現行(新しい)。マップを左右にドラッグしても回せます。</span>
   </div>
 
   <footer>集計対象:上位1000アーティスト中、分類済みの約263時間(全370時間の71%)。</footer>
@@ -225,7 +240,23 @@ svg.innerHTML=axesSVG;
 
 /* simulation state — n.x / n.y stay the design %s (used by zoom); sim runs in px on n.sx / n.sy */
 const CX=W/2, CY=H/2, MAXOFF=62, POW=1.9;   // 中心からの距離のべき乗に比例した変位オフセット
-for(const n of nodes){ n.hx=px(n.x); n.hy=py(n.y); n.rr=r(n.h); }
+
+/* 第3の軸(奥行き)= 年代・世代。各ジャンルの聴取の「重心」にあたるおおよその年代を割り当て、
+   源流(古い)ほど奥、現行(新しい)ほど手前へ。edgeの 源流→影響→派生 がZ軸に沿って流れる。 */
+const ERA={
+  soul:1976, aor:1981, city:1983, rnb:1992, shibuya:1994, idm:1996, house:2000,
+  jpop:2006, anime:2007, hard:2010, idol:2011, net:2012, edm:2014, ff:2016,
+  kpop:2017, vtuber:2019, ukg:2020, kindie:2021
+};
+const eArr=Object.values(ERA), eMin=Math.min(...eArr), eMax=Math.max(...eArr), eMid=(eMin+eMax)/2;
+const Z_HALF=150;                                 // 奥行きの振れ幅(px)
+const zOf=y=>(y-eMid)/((eMax-eMin)/2)*Z_HALF;     // 年代→奥行き(手前=+ / 奥=−)
+
+/* 視点(Z軸=時間を見込む角)。yaw=0 では従来の2Dマップそのまま、回すと奥行きが立ち上がる。 */
+let yaw=0, dragging=false, moved=0;
+const PITCH=-0.30, DEPTH_SCALE=0.16, DEPTH_FADE=0.42, YAW_MAX=1.15;
+
+for(const n of nodes){ n.hx=px(n.x); n.hy=py(n.y); n.rr=r(n.h); n.era=ERA[n.id]; n.zp=zOf(n.era); }
 let dMax=0;
 for(const n of nodes){ const d=Math.hypot(n.hx-CX,n.hy-CY); if(d>dMax)dMax=d; }
 for(const n of nodes){
@@ -267,26 +298,48 @@ for(const n of nodes){
   const t1=el("text",{x:0,y:ty,"text-anchor":"middle"}); t1.textContent=n.name;
   const t2=el("text",{class:"hrs",x:0,y:ty+12,"text-anchor":"middle"}); t2.textContent=n.h+"h";
   gg.appendChild(t1); gg.appendChild(t2);
-  gg.addEventListener("pointerenter",()=>{ hoverId=n.id; kick(); });          // ホバーで斥力ON→周囲を押しのける
+  gg.addEventListener("pointerenter",()=>{ if(dragging)return; hoverId=n.id; kick(); });          // ホバーで斥力ON→周囲を押しのける
   gg.addEventListener("pointerleave",()=>{ if(hoverId===n.id){ hoverId=null; kick(); } }); // 離すと張力で戻る
   svg.appendChild(gg);
   n.gEl=gg;
 }
 
-/* place every element from the current simulation state */
+/* (sx,sy,z) を現在の視点角 yaw で画面座標へ投影する。
+   Y軸(縦)まわりの回転 + わずかなピッチ。yaw=0 では x=sx / y=sy に一致し、従来の2D配置と完全一致。
+   回すほど(open=|sin yaw|)奥行きの上下ずらし・拡縮・減光が立ち上がる。 */
+function project(x,y,zp){
+  const c=Math.cos(yaw), s=Math.sin(yaw), open=Math.abs(s);
+  const X=x-CX, Y=y-CY;
+  const Xr=X*c+zp*s;          // 画面横 = 地理(X)と時間(Z)の合成
+  const Zr=-X*s+zp*c;         // 視線方向の深さ(手前=+ / 奥=−)
+  return {x:CX+Xr, y:CY+Y+Zr*PITCH*open, depth:Zr};
+}
+
+/* place every element from the current simulation state (投影を通す) */
 function layout(){
+  const open=Math.abs(Math.sin(yaw));
+  for(const n of nodes){
+    const p=project(n.sx,n.sy,n.zp);
+    n.pX=p.x; n.pY=p.y; n.depth=p.depth;
+    const tc=Math.max(-1,Math.min(1,p.depth/Z_HALF));     // 深さの正規化(手前+1 / 奥−1)
+    const sc=1+DEPTH_SCALE*open*tc;                        // 手前ほど大きく
+    const op=1-DEPTH_FADE*open*(1-(tc+1)/2);               // 奥ほど淡く
+    n.gEl.setAttribute("transform",`translate(${n.pX.toFixed(2)} ${n.pY.toFixed(2)}) scale(${sc.toFixed(3)})`);
+    n.gEl.setAttribute("opacity",op.toFixed(3));
+  }
   for(const e of edgeObjs){
     const A=N[e.a],B=N[e.b];
-    e.line.setAttribute("x1",A.sx.toFixed(2)); e.line.setAttribute("y1",A.sy.toFixed(2));
-    e.line.setAttribute("x2",B.sx.toFixed(2)); e.line.setAttribute("y2",B.sy.toFixed(2));
+    e.line.setAttribute("x1",A.pX.toFixed(2)); e.line.setAttribute("y1",A.pY.toFixed(2));
+    e.line.setAttribute("x2",B.pX.toFixed(2)); e.line.setAttribute("y2",B.pY.toFixed(2));
     if(e.text){
-      const lx=A.sx+(B.sx-A.sx)*e.t, ly=A.sy+(B.sy-A.sy)*e.t;
+      const lx=A.pX+(B.pX-A.pX)*e.t, ly=A.pY+(B.pY-A.pY)*e.t;
       e.rect.setAttribute("x",(lx-e.w/2).toFixed(2)); e.rect.setAttribute("y",(ly+e.dy-11).toFixed(2));
       e.text.setAttribute("x",lx.toFixed(2)); e.text.setAttribute("y",(ly+e.dy).toFixed(2));
     }
   }
-  for(const n of nodes){
-    n.gEl.setAttribute("transform",`translate(${n.sx.toFixed(2)} ${n.sy.toFixed(2)})`);
+  if(open>0.001){                                          // 回転時のみ、奥→手前の順で重ねる
+    const order=[...nodes].sort((p,q)=>p.depth-q.depth);
+    for(const n of order) svg.appendChild(n.gEl);
   }
 }
 
@@ -345,6 +398,7 @@ const TOTAL=263, MAXH=Math.max(...nodes.map(n=>n.h));
 
 svg.querySelectorAll(".node").forEach(el=>{
   el.addEventListener("click",()=>{
+    if(moved>4)return;                       // ドラッグ(回転)だった場合はズームを開かない
     const n=N[el.dataset.id];
     // ノード中心の画面上の位置(%)を計算し、そこから円が広がる
     const box=svg.getBoundingClientRect();
@@ -378,6 +432,25 @@ zoom.querySelector(".z-close").addEventListener("click",e=>{
   zoom.classList.remove("open");
 });
 zoom.addEventListener("click",()=>zoom.classList.remove("open"));
+
+/* ── 視点回転:Z軸(時間)の奥行きを見込む ── */
+const yawSlider=document.getElementById("yaw");
+const mapbox=document.querySelector(".mapbox");
+function setYaw(rad){ yaw=Math.max(-YAW_MAX,Math.min(YAW_MAX,rad)); layout(); }
+yawSlider.addEventListener("input",()=>{ setYaw(yawSlider.value*Math.PI/180); });
+
+let dragStartX=0, yawStart=0;
+mapbox.addEventListener("pointerdown",e=>{
+  if(e.target.closest("#zoom"))return;       // 開いているパネル上では回さない
+  dragging=true; dragStartX=e.clientX; yawStart=yaw; moved=0;
+});
+window.addEventListener("pointermove",e=>{
+  if(!dragging)return;
+  const dx=e.clientX-dragStartX; moved=Math.max(moved,Math.abs(dx));
+  setYaw(yawStart+dx*0.006);
+  yawSlider.value=Math.round(yaw*180/Math.PI);
+});
+window.addEventListener("pointerup",()=>{ dragging=false; });
 </script>
 </body>
 </html>
