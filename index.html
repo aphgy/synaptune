@@ -73,10 +73,23 @@
   #zoom .z-label{font-size:11px;font-weight:800;letter-spacing:.18em;opacity:.72;margin-bottom:7px;
     display:flex;align-items:center;gap:8px;}
   #zoom .z-label::after{content:"";flex:1;height:1px;background:rgba(255,255,255,.3);}
-  #zoom .z-artists{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;}
-  #zoom .z-artists span{
-    background:rgba(255,255,255,.17);border:1px solid rgba(255,255,255,.28);
-    border-radius:999px;padding:3px 11px;font-size:12.5px;font-weight:700;white-space:nowrap;
+  #zoom .z-artists{display:flex;flex-wrap:wrap;gap:12px 10px;margin-bottom:18px;}
+  #zoom .z-artists a{display:block;width:74px;text-decoration:none;color:#fff;}
+  #zoom .z-jacket{
+    width:74px;height:74px;border-radius:8px;overflow:hidden;
+    background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);
+    box-shadow:0 3px 10px rgba(0,0,0,.28);
+    transition:transform .18s cubic-bezier(.34,1.56,.44,1);
+  }
+  #zoom .z-artists a[href]:hover .z-jacket{transform:scale(1.07);}
+  #zoom .z-jacket img{display:block;width:100%;height:100%;object-fit:cover;}
+  #zoom .z-noart{
+    width:100%;height:100%;display:flex;align-items:center;justify-content:center;
+    font-size:26px;font-weight:900;color:rgba(255,255,255,.8);
+  }
+  #zoom .z-aname{
+    margin-top:5px;font-size:10.5px;font-weight:700;line-height:1.35;text-align:center;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;opacity:.92;
   }
   #zoom .z-note{font-size:13px;line-height:1.95;letter-spacing:.015em;opacity:.95;}
   #zoom .z-playwrap{margin-top:18px;}
@@ -343,6 +356,135 @@ const FAMNAME={jp:"日韓ポップ圏",club:"クラブミュージック圏",roo
 const zPlayWrap=zoom.querySelector(".z-playwrap"),zPlay=zoom.querySelector(".z-play");
 const TOTAL=263, MAXH=Math.max(...nodes.map(n=>n.h));
 
+/* 各アーティストの代表アルバム: [ジャケット画像, Spotify ID, アルバム名]
+   画像は i.scdn.co のハッシュ(300px)。データURIが直接入っている場合はそのまま使う。 */
+const IMG="https://i.scdn.co/image/", SPO="https://open.spotify.com/";
+const ART={
+"tofubeats":["ab67616d00001e02afd7777fc1e8d5ca6d5ff61c","4J0ksIXuqCi3gdFh9qqOII","FANTASY CLUB"],
+"DE DE MOUSE":["ab67616d00001e02ef94fbca1f42f22ce3c9a1e0","6wzmYBtzA90cXIUvTuD5I3","Nulife"],
+"Aiobahn":["ab67616d00001e022e65e99d59bdbf0502c212ef","4ueXV3cNBjmKEdnwtjVsnv","all connected"],
+"Moe Shop":["ab67616d00001e0238dbd1c56c0c01408c426a54","11BdAGr20XijETJTCSfH7b","Moshi Moshi"],
+"TEMPLIME":["ab67616d00001e02e944f330767ece7fd2f45924","1GMnqT9EffWh7xtXiD9y5g","POP-AID"],
+"パソコン音楽クラブ":["ab67616d00001e0260ffe6e8e357c5eea6e8967d","3rgZQaVE4YQs5pwazPDGk5","DREAM WALK"],
+"CAPSULE":["ab67616d00001e020d1ff0ef0b453f7e50e864c0","3rPi1ImIQuVUyt5KYaVNLE","Sugarless GiRL"],
+"TAKU INOUE":["ab67616d00001e026b3429c548308f6678337e75","6zoXOeGADCsdIuWCZsXz8Z","ALIENS EP"],
+"フレネシ":["ab67616d00001e020a491a8dd511c67a40c8266e","758SQhbduGjDqXcWrbIDuM","キュプラ"],
+"Serani Poji":["ab67616d00001e027cc46ab2b35f933dea6139cc","2AbeJ3WRfsuNBj60drWwWi","ワンルームサバイバル"],
+"YMCK":["ab67616d00001e02dfef2f4f5febb531e53d63ea","3EPVfpNZtv2hSxl0IUAiS5","FAMILY MUSIC"],
+"Cymbals":["ab67616d00001e022f11e90f0cee25a01d5f703f","1al0sCpMOJ6ZqmOaihTitp","That's Entertainment"],
+"ピチカート・ファイヴ":["ab67616d00001e0212432beac690a24f134bacd6","6GhjdVK0RB9pnCYEIV7VHL","ベリッシマ"],
+"Flipper's Guitar":["ab67616d00001e0295b77c091ab5dd5b889cefd2","0V93WNXGP0BssewXKpn1d9","CAMERA TALK"],
+"KAGAMI":["ab67616d00001e02acdf5feb3d56b66085a865cb","2XWYh2by9h93BMGIbaf9H2","TIME MACHINE"],
+"KMNZ":["ab67616d00001e02c3862da277d06dce2fa6b224","0034RJKaIQVPPA581qxaif","KMNCULTURE"],
+"星街すいせい":["ab67616d00001e02f724e5bdf4ae3e50082c2403","2HmlBFz06FldsdzwY1FHg4","Still Still Stellar"],
+"ピーナッツくん":["ab67616d00001e02c067f3ad9264cd983d154e40","6dRS5WFgYJoXpWhK6clvc1","False Memory Syndrome"],
+"HIMEHINA":["ab67616d00001e02356c310657bc4ab613ae3778","7sroLCDG7IcyUaXzDf5V6g","藍の華"],
+"Marpril":["ab67616d00001e02130cd74773fb3ebb909cc97c","3gd49JjTLlTyobSo7Q62b4","電気羊の夢"],
+"AZKi":["ab67616d00001e02f4b3bf6808de4101b4914e6a","1rxQj1wl6KWb1EKO5p2D1i","without U"],
+"轟はじめ":["ab67616d00001e02ab77f200222ec714e8c17399","6Jui468DP2LTpi0ApxHrHn","Deep Dive"],
+"Doorlesshouse":["ab67616d00001e028f84f0d4881fd3b44fc0eac4","3UN9qz0m38a5tyxvraxHWz","MIRAE COMPLEX Pt. 1"],
+"KIM PUREUM":["ab67616d00001e020014092412493c010e20b667","2zZvTk4dSHV1qpLdtiILlr","'BLUISH' Unplugged"],
+"Silica Gel":["ab67616d00001e02c0e82bd1db784c147b8cbe31","49CqNP5omI7QbOe8TPAR0y","POWER ANDRE 99"],
+"SUMIN":["ab67616d00001e0235701e93674cec8e597f2ee8","5DwD2ebeQNwvvIGOAsXDAz","Your Home"],
+"Parannoul":["ab67616d00001e0235d26de7d1bc9d591b544835","0sLt9EsWnVZgJAO5Sp35YQ","To See the Next Part of the Dream"],
+"坂本真綾":["ab67616d00001e026f31bbe368df25573ffd1309","2C6AFE7MxD1Cjf0ckFcfJy","シングルコレクション+ ハチポチ"],
+"KIRIN":["ab67616d00001e02eb565269666695b2280d4ac1","3rw61BJtW6tfgFz3W9K5hQ","The Town"],
+"ClariS":["ab67616d00001e02e1d983fdd7ad9a41aa78c010","4bRHjrsaHEtOVdxmZrFAy7","BIRTHDAY"],
+"ヒプノシスマイク":["ab67616d00001e02a2a833caac7f49e69c82935f","7k6dlrlgJMKTQPIxxpko5j","Enter the Hypnosis Microphone"],
+"電音部":["ab67616d00001e0217420e59e6f0ff9c074c74c2","2YWtGKVRuOjGS9PBwsomJU","電音部ベストアルバム -シーズン.0-"],
+"初星学園":["ab67616d00001e0294ffc1e63d96a8b85bab1188","4Dswz5VTXB5wWg7UiIeg9W","ReCollection vol.1"],
+"中島愛":["ab67616d00001e02eca2553c626248405a179b9c","2hx1SE7aH9NC1CL8BQ3EsY","green diary"],
+"林原めぐみ":["ab67616d00001e02055ab67e541d99c4e3d56a64","55RelAMhqC3ubteVrbIY8I","スレイヤーズMEGUMIXXX"],
+"Negicco":["ab67616d00001e02d4b3b93bbc788f9d6a9bb3d9","0yzPT3Su3T28tLXsnC3IkC","ティー・フォー・スリー"],
+"KIRINJI":["ab67616d00001e02351fe74cc05ebf6c5e0928cf","6wiUifStt7pdwsn1k3ROfH","3"],
+"SPEED":["ab67616d00001e021cf5a7074796f4cc5b1fa6fa","72LbF6IPLjpdLaEkSKwUWr","Starting Over"],
+"太陽とシスコムーン":["ab67616d00001e02b4e76067c158f2f76fd78a5e","0qZcfdJrxVjFzMuiFzO04b","TAIYO&CISCOMOON 1"],
+"RYUTist":["ab67616d00001e027b6cfb44c29667f8afcb233c","0v8V88LY7bBqc4iXbc2etx","ファルセット"],
+"Especia":["ab67616d00001e02c90a8a253fd681c9ed8a5818","3bbpT87HT5W0ILCmsImBdA","GUSTO"],
+"SANDAL TELEPHONE":["ab67616d00001e024811569e9fbe64341c78fbc9","691Ydgcty0a4foaVamhPqU","SHUTDOWN→REBOOT"],
+"clammbon":["ab67616d00001e02aad081d217c3d4279e39ec65","4uAOSnv3PUFvFT1NAeq2fQ","ドラマチック"],
+"NONA REEVES":["ab67616d00001e020c1e1ac6f9244047b32c5b31","2XpP3oRuBudQhXZaNhsxWe","Friday Night"],
+"Perfume":["ab67616d00001e0206ca33f0236a9b67e18e2a85","0thr93xfBqCFiia77XsjWi","GAME"],
+"宇多田ヒカル":["ab67616d00001e02b11318545ec9e3ec49e7c9f1","0vYCN1SXivJ5dS1dasLZug","初恋"],
+"m-flo":["ab67616d00001e0240b9da3f4fc33ebdcae34c84","5s6G3HzAqcKNJt90LeFw19","EXPO EXPO"],
+"chelmico":["ab67616d00001e020f6e89f0b6a232df80c8bf87","4AH4mit2y1i7UgaRkGIfch","Fishing"],
+"杏里":["ab67616d00001e02cfd93d36fe2365f9436587d1","3OvZYx7AAGplmJjwD29JiV","Timely!!"],
+"中山美穂":["ab67616d00001e025a84444843e7e5ec828bfc74","2Cp86mF4i9IqJmyEeYBwRQ","EXOTIQUE"],
+"菊池桃子":["ab67616d00001e028a5467e4d6b0aaa4a783da73","0bz52cpu2h1xIYI2IIqOCf","Adventure"],
+"RA MU":["ab67616d00001e026a867f1c0e6eff4f418b1e1a","03lL8lCH3909Jlp5hZvJN3","Thanks Giving"],
+"八神純子":["ab67616d00001e02613535ad298da84c39bf92c5","3UPTMBtQEFaadLylMXo2Lu","コミュニケーション"],
+"YMO":["ab67616d00001e0296f32036f45ada5492df47e3","76xjrDclKxWzJdDz3isxBX","Yellow Magic Orchestra"],
+"Wink":["ab67616d00001e0295216deea889d5fdb5ecc466","47qcnNG2U8HpMrxo8hTPyO","Especially For You"],
+"Night Tempo":["ab67616d00001e020f1dff6a1935bf648c2cbfb4","6J30sBc6ZgSAr9LvylXsKz","Fantasy"],
+"Yung Bae":["ab67616d00001e029c66743c9e90152f2fd94c5b","0jZiFgVAR8e8PMy5gMCOOl","Bae"],
+"YUKIKA":["ab67616d00001e02cd85f4807be9532eab2979dc","0Vd3JVrTmHAhwztyXP9hv1","SOUL LADY"],
+"Starjunk 95":["ab67616d00001e02edf3b03024ed3327fc45d299","6BBuO5vH6zTR8sP7HMmmeF","Industrial Sunset Memories"],
+"aespa":["ab67616d00001e02b0201a6a4e736f74081331b8","3vk3MR4IL2EMC4ksN5pCo4","Armageddon"],
+"f(x)":["ab67616d00001e02b6baf420e67f45971ca0d216","6yJdchE7ARS996BxRgplFH","4 Walls"],
+"S.E.S.":["ab67616d00001e020ae7ef733837fb782ff73c7b","795tqw58HZUK0Gro9GvneZ","S.E.S. - The 1st Album"],
+"Red Velvet":["ab67616d00001e026538b8e1b5c7b2a9d2211769","0rvrbZvaDX5S9ZBhwOwFfH","Perfect Velvet"],
+"Da Tweekaz":["ab67616d00001e02693b9cf31459bdf12993c2de","1yboRXoWcmNL5vLe9uSBcO","Time 2 Shine"],
+"Darren Styles":["ab67616d00001e024aa3528739216c17f7c9823d","0Nik1KaBwl8jOLEb9YGLv4","Skydivin'"],
+"Force & Styles":["ab67616d00001e020df935e57b3ccd94441fd2f8","7zWp6bUfDACkM8pTvCACQr","Heart Of Gold"],
+"D-Block & S-te-Fan":["ab67616d00001e02cd2febcf4926b8d28d45d65f","22Evsh5AjJ8kERYZ4gUtl7","Antidote"],
+"USAO":["ab67616d00001e02bb0811b4f4c2cf794e3a5823","39wusbiZ0wAKSF50rq6kWH","SUPERNOVA"],
+"DJ Noriken":["ab67616d00001e026a93bdf708d6ebde9bf13342","4RwbxI3hnmR3tjSS4nsZNq","シノノメ"],
+"REDALiCE":["ab67616d00001e021fddbf8b59f8fe5b7d45a162","00jrDYFRZhgo8y5DKNpBJY","OVERLOAD"],
+"Skrillex":["ab67616d00001e022a7e34a68952017d900c6bb8","7tWP3OG5dWphctKg4NMACt","Quest For Fire"],
+"Knock2":["ab67616d00001e027b3e13a4e21a128c0d04c789","0m7RPdwNo1gte0nUSwh2yv","nolimit"],
+"Martin Garrix":["ab67616d00001e02edba220be76f96d51bd38838","45gsxfnJ5Nt2RZp82SQenc","Sentio"],
+"Sub Focus":["ab67616d00001e024999f72f9c376a7674411172","1puaRzEhhLvXP17jUEGWb3","Sub Focus"],
+"Hedex":["ab67616d00001e02d0619ecc3ce2f9402be75fbe","4vjx5GK9ZRTU1sJTvqIJuO","MHITR: The Album"],
+"Zomboy":["ab67616d00001e02be2f2dac059e34db2db70aaf","2vQMOIjgv3a2iBDtwygfgL","The Outbreak"],
+"Sammy Virji":["ab67616d00001e02da9716ed2632a8486ffa9132","01Jt1V19gcHf61oveo8RZV","Spice Up My Life"],
+"Soul Mass Transit System":["ab67616d00001e02f629112171c46d440d85e931","track/19Hi2dySjddiIJyTVbXt9A","Ring The Alarm"],
+"DJ Q":["ab67616d00001e02078bc2a69b59177a3c6fc054","0GVhZePnXb0oPVSAMSTxqb","Est. 2003"],
+"Interplanetary Criminal":["ab67616d00001e02e29de6924e3680e6e07438fd","2jqtWThfb36fQEIi7LQLGE","All Thru The Night"],
+"Shunji Fujii":["ab67616d00001e0267823b0ed88529c25fd5be4b","5Z8CYMUAsE88MxCYznLuHZ","Where's The Exit?"],
+"Stones Taro":["ab67616d00001e028677c7e8eb4e5197093ed68f","5Egz4bkypg4ajJc8jnSnn5","Dwellers Of The Seabed"],
+"Todd Edwards":["ab67616d00001e02602dc7b3057af81a2edf7855","0JtoC5PJhoTsBRzLrFRLrX","Todd Edwards' Nervous Tracks"],
+"Kerri Chandler":["ab67616d00001e02f671d00f5ca7c99fa6ccfb84","4Q4G4hrAms9J3mYmofZlrT","Spaces and Places"],
+"Louie Vega":["ab67616d00001e0221ea72bf0d09a9ae9b23df4a","1Y0PpDiBUW7cUkynsYAzZq","Expansions In The NYC"],
+"MAW":["ab67616d00001e026e30716678b9a77c3b628787","5E2xzPAzOC3ZbXBgI2hawi","The Nervous Track (Nuyorican Soul)"],
+"Joshwa":["ab67616d00001e02b9ce1c5295d908add183dd57","51da1nUSWtm7kA6JZuu6lT","Lost In Music"],
+"Mondo Grosso":["ab67616d00001e024802f7bccb36622a3b5e3b67","3IhDlS0GsKJHNCcJA7xocM","何度でも新しく生まれる"],
+"DJ KAWASAKI":["ab67616d00001e02d213e3a591b9c721a3e51cd8","3kKPCd5DLlKSmOZt1pKLT3","ONE WORLD"],
+"Jazztronik":["ab67616d00001e027cf7f5009f88949d14aaee2f","51EEkn0YWQzGGOTV4fh6dK","七色"],
+"Aphex Twin":["ab67616d00001e0238906032688bb13b135ce19a","7aNclGRxTysfh6z0d8671k","Selected Ambient Works 85-92"],
+"Flying Lotus":["ab67616d00001e026e6fdc42d62db60641b9cb46","5EnERG2QBlF6Z0BrUjEcF4","Cosmogramma"],
+"Basic Channel":["ab67616d00001e0245437e9a56394fd55957208a","3QiuQrKMLpt7MDgjUDvv8d","BCD"],
+"Deepchord":["ab67616d00001e025900f00fe759377ef89d4973","0D9BvJ0DhTou9RlWJniSw6","Sommer"],
+"TOKiMONSTA":["ab67616d00001e02509a3202220ed1073f08634e","2n2lsJowrhccWUuDU66cmm","Creature Dreams"],
+"Earth, Wind & Fire":["ab67616d00001e023e716266190c38e929f209cf","5tXZfxvr2VaWibD74nw8VL","That's The Way Of The World"],
+"Chaka Khan":["ab67616d00001e028be5f9356ee08a1f9e67ff87","08yanJqA75TPyDowCXvvPU","I Feel for You"],
+"Incognito":["ab67616d00001e0287358f4d60ab1cc2c023ea1a","1g2T7mCkoZi4OPI4QakHmX","Jazz Funk"],
+"Jamiroquai":["ab67616d00001e026407aa9a5e5215cf554ad5d1","4yrrPNjd9RcqnuDnoEhlER","Travelling Without Moving"],
+"Quincy Jones":["ab67616d00001e027c70c3a60eb6b8c054de61c5","33Q2qnprq9XxMchMFMblCM","Quincy Jones"],
+"Whitney Houston":["ab67616d00001e029015296f9afabfc102989521","2MH37enG6IPvNK5QFLyKes","Whitney Houston"],
+"TLC":["ab67616d00001e023ae63e3e2d9da8366e33fdab","5eg56dCpFn32neJak2vk0f","CrazySexyCool"],
+"MISIA":["ab67616d00001e02d2425cbd456293c8d149b255","60B4x5zJ4YezFWEtN5RkUn","Mother Father Brother Sister"],
+"三浦大知":["ab67616d00001e025a54ff86dae2ff407edd3bfa","1vw5YK6raUO3OoqZpvHWVm","HIT"],
+"Crystal Kay":["ab67616d00001e02eff13a5ffd6fc16a243de094","3jwmnbQp74Yscim9Gwgo9N","almost seventeen"],
+"VivaOla":["ab67616d00001e0257ff992235f4a402a70b1651","0kIXakNYZLaMNrPx5VsXOp","STRANDED"],
+"Chicago":["ab67616d00001e02192f3a588427f2cbf8365506","1ICKrl6sDjJD1YdR9VDfPR","Chicago 17"],
+"Journey":["ab67616d00001e0223290120a609a65e14cfe018","4guAwaniEAEQSW0NCpo4gm","Escape"],
+"Boston":["ab67616d00001e028c1fadcc997a65384f34d694","2QLp07RO6anZHmtcKTEvSC","Boston"],
+"REO Speedwagon":["ab67616d00001e02d514470784e3d02ee0bcdb80","0X4ZNTZw7SYgrp5rlBQC3N","Hi Infidelity"],
+"Phil Collins":["ab67616d00001e02de0753cd4e8c86dbf6e2f9f0","1rVhockt4RAiZFaK3M3zPB","No Jacket Required"]
+};
+function artistCards(list){
+  return list.map(a=>{
+    const t=ART[a];
+    if(!t) return `<a><div class="z-jacket"><div class="z-noart">${[...a][0]}</div></div><div class="z-aname">${a}</div></a>`;
+    const img=t[0].startsWith("data:")?t[0]:IMG+t[0];
+    const href=SPO+(t[1].includes("/")?t[1]:"album/"+t[1]);
+    return `<a href="${href}" target="_blank" rel="noopener" title="${a}『${t[2]}』">`+
+      `<div class="z-jacket"><img src="${img}" alt="${a}『${t[2]}』ジャケット" loading="lazy"></div>`+
+      `<div class="z-aname">${a}</div></a>`;
+  }).join("");
+}
+zArtists.addEventListener("click",e=>{ if(e.target.closest("a[href]")) e.stopPropagation(); }); // ジャケットを開いてもパネルは閉じない
+
 svg.querySelectorAll(".node").forEach(el=>{
   el.addEventListener("click",()=>{
     const n=N[el.dataset.id];
@@ -359,7 +501,7 @@ svg.querySelectorAll(".node").forEach(el=>{
     zFam.textContent=FAMNAME[n.fam];
     zHours.textContent=n.h;
     zShare.textContent=`分類済み全体の ${Math.round(n.h/TOTAL*100)}%`;
-    zArtists.innerHTML=n.a.split(" / ").map(a=>`<span>${a}</span>`).join("");
+    zArtists.innerHTML=artistCards(n.a.split(" / "));
     zNote.textContent=n.note;
     if(n.pl){
       zPlayWrap.style.display="";
